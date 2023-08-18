@@ -1,0 +1,11 @@
+[app]
+name = "FancyNick"
+menu = "Badge"
+
+[entry]
+class = "FancyNickApp"
+
+[metadata]
+author = "fuero <fuerob@gmail.com>"
+license = "LGPL-3.0-only"
+url = "https://example.com"
