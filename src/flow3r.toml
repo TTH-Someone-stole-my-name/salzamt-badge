@@ -1,11 +1,11 @@
 [app]
-name = "FancyNick"
+name = "Salzamt Nick App"
 menu = "Badge"
 
 [entry]
-class = "FancyNickApp"
+class = "SalzamtNickApp"
 
 [metadata]
-author = "fuero <fuerob@gmail.com>"
+author = "fuero <fuerob@gmail.com>, tth, nother"
 license = "LGPL-3.0-only"
-url = "https://example.com"
+url = "https://github.com/TTH-Someone-stole-my-name/salzamt-badge"
