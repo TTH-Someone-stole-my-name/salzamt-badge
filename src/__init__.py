@@ -1,12 +1,14 @@
 from st3m.application import Application, ApplicationContext
 from ctx import Context
+import bl00mbox
 import uos
 import leds
 import math
 import os
 
 class SalzamtNickApp(Application):
-    PROFILES_DIR = f'/sd/salzamt'
+    PROFILES_DIR = f'/sd/salzamt/profiles'
+    AUDIO_DIR= f'/sd/salzamt/audio'
 
     def get_profiles(self):
         try:
@@ -41,6 +43,12 @@ class SalzamtNickApp(Application):
         leds.set_brightness(32)
 
         self._flags = self.init_flags()
+        
+        self.blm = bl00mbox.Channel("austria")
+        self.sound_gruess_di = self.blm.new(bl00mbox.patches.sampler, f"{self.AUDIO_DIR}/GruessDi.wav")
+        self.sound_gruess_di.signals.output = self.blm.mixer
+        self.sound_schleich_di = self.blm.new(bl00mbox.patches.sampler, f"{self.AUDIO_DIR}/SchleichDi.wav")
+        self.sound_schleich_di.signals.output = self.blm.mixer 
 
     def init_flags(self):
         red=(255,0,0)
@@ -140,7 +148,7 @@ class SalzamtNickApp(Application):
             elif (self._petal_states[i] == 1 or self._petal_states[i] == 2) and petals[i].pressure > 0:
                self._petal_states[i] = 2
                self._petal_pressed[i] = False
-            elif self._petal_states[i] == 2 and petals[i].pressure == 0:
+            elif (self._petal_states[i] == 1 or self._petal_states[i] == 2) and petals[i].pressure == 0:
                self._petal_states[i] = 3
                self._petal_pressed[i] = False
             elif self._petal_states[i] == 3 and petals[i].pressure == 0:
@@ -180,8 +188,8 @@ class SalzamtNickApp(Application):
         if flag != None:
             if self._rotate:
                 for i in range(40):
-                    leds.set_rgb((self._offset + i) % 40, *flag[i])
-                self._offset += 1
+                    leds.set_rgb(math.trunc(self._offset + i) % 40, *flag[i])
+                self._offset += 0.335
             else:
                 for i in range(40):
                     leds.set_rgb(i, *flag[i])
@@ -210,22 +218,22 @@ class SalzamtNickApp(Application):
             self.toggle_pulse()
         # Profile down
         if self._petal_pressed[2]:
-            if self._selected_profile <= 0:
-                self._selected_profile = len(self.get_profiles()) - 1
-            else:
-                self._selected_profile -= 1
+            self._selected_profile= (self._selected_profile + 1) % len(self.get_profiles())
         # Profile up
-        if self._petal_pressed[3]:
-            self._selected_profile = (self._selected_profile + 1) % len(self.get_profiles())
+        #if self._petal_pressed[3]:
+            #self._selected_profile = (self._selected_profile + 1) % len(self.get_profiles())
         if self._petal_pressed[4]:
             self._spin= not self._spin
+        if self._petal_pressed[3]:
+            self.sound_gruess_di.signals.trigger.start()
+        if self._petal_pressed[5]:
+            self.sound_schleich_di.signals.trigger.start()
         if self._petal_pressed[9]:
             self.set_ironman()
         if self._petal_pressed[8]:
             self.set_flag()
         if self._petal_pressed[7]:
             self.set_cthulhu()
-
 # For running with `mpremote run`:
 if __name__ == "__main__":
     import st3m.run
