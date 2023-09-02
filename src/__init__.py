@@ -1,242 +1,76 @@
 from st3m.application import Application, ApplicationContext
+from st3m.input import InputState
+from st3m.input import InputController
+from st3m.run import run_view
+from .constants import *
+
 from ctx import Context
+import sys_display
 import bl00mbox
-import uos
 import leds
 import math
 import os
 
-class SalzamtNickApp(Application):
-    PROFILES_DIR = f'/sd/salzamt/profiles'
-    AUDIO_DIR= f'/sd/salzamt/audio'
 
-    def get_profiles(self):
-        try:
-            os.mkdir(self.PROFILES_DIR)
-        except OSError:
-            # May already exist, we don't care
-            pass
-        return os.listdir(self.PROFILES_DIR)
-
+class SalzApp(Application):
     def __init__(self, app_ctx: ApplicationContext) -> None:
         super().__init__(app_ctx)
-        self._selected_profile=0
-        self._selected_flag=0
-        self._offset=0
-        self._rotate=False
-        self._spin=False
-        self._pulse=False
-        self._pulse_inc=True
-        self._pulse_by=7
-        self._ironman=False
-        self._cthulhu=False
-        self._picture=0
-        self._petal_states = [0]*10
-        self._petal_pressed = [False]*10
-        self._angle = 0
-        self.time = 0
-        self.rotation = 0
-        self.debug=[]
-        for i in range(0, 10):
-            self._petal_states[i] = 0
-            self._petal_pressed[i] = False
-        leds.set_brightness(32)
+        self.input = InputController()
+        self.rot, self.flag_id, self.picture_id, self.brightness = 0, 0, 0, 100
+        self.petal_last_frame = [False] * 10
+        files = os.listdir(PATH)
+        self.img_files = [PATH + p for p in files if p.endswith(".png") or p.endswith(".jpg")]
+        self.audio_files = [self.blm.new(bl00mbox.patches.sampler, PATH + p) for p in files if p.endswith(".wav")]
 
-        self._flags = self.init_flags()
-        
-        self.blm = bl00mbox.Channel("austria")
-        self.sound_gruess_di = self.blm.new(bl00mbox.patches.sampler, f"{self.AUDIO_DIR}/GruessDi.wav")
-        self.sound_gruess_di.signals.output = self.blm.mixer
-        self.sound_schleich_di = self.blm.new(bl00mbox.patches.sampler, f"{self.AUDIO_DIR}/SchleichDi.wav")
-        self.sound_schleich_di.signals.output = self.blm.mixer 
-
-    def init_flags(self):
-        red=(255,0,0)
-        white=(255,255,255)
-        yellow=(255,255,0)
-        black=(10,10,10)
-        # Draw Austrian flag
-        AT=[]
-        AT=[white]*40
-        # TOP
-        for i in range(0,9):
-            AT[i]=red
-        for i in range(32,40):
-            AT[i]=red
-        # MID
-        for i in range(9,17):
-            AT[i]=white
-        for i in range(24,32):
-            AT[i]=white
-        # BOT
-        for i in range(17,25):
-            AT[i]=red
-        DE=[]
-        DE=[white]*40
-        # TOP
-        for i in range(0,9):
-            DE[i]=black
-        for i in range(32,40):
-            DE[i]=black
-        # MID
-        for i in range(9,17):
-            DE[i]=red
-        for i in range(24,32):
-            DE[i]=red
-        # BOT
-        for i in range(17,25):
-            DE[i]=yellow
-        # Draw AustrianHungarian flag
-        ATHU=[]
-        ATHU=[white]*40
-        # TOP
-        for i in range(0,9):
-            ATHU[i]=yellow
-        for i in range(32,40):
-            ATHU[i]=yellow
-        # MID
-        for i in range(9,17):
-            ATHU[i]=black
-        for i in range(24,32):
-            ATHU[i]=black
-        for i in range(17,25):
-            ATHU[i]=black
-        return [ AT, ATHU, DE ]
-
-    def pulse(self, brightness):
-        if self._pulse_inc:
-            brightness = brightness + self._pulse_by
-        else:
-            brightness = brightness - self._pulse_by
-        if brightness <= 0:
-            self._pulse_inc = not self._pulse_inc
-            return 0
-        if brightness >= 255:
-            self._pulse_inc = not self._pulse_inc
-            return 255
-        return brightness
-
-    def toggle_pulse(self):
-        self._pulse=not self._pulse
-        if self._pulse:
-            self._pulse_inc=True
-            self._pulse_by=5
-            leds.set_brightness(0)
-
-    def set_ironman(self):
-        self._flag = None
-        self._ironman = True
-        self._cthulhu = False
-
-    def set_cthulhu(self):
-        self._flag = None
-        self._ironman = False
-        self._cthulhu = True
-
-    def set_flag(self):
-        self._selected_flag = (self._selected_flag + 1) % len(self._flags)
-        self._flag = self._flags[self._selected_flag]
-        self._ironman = False
-        self._cthulhu = False
-
-    # Debounce switch
-    def update_petals(self, petals):
-        for i in range(0, 10):
-            if self._petal_states[i] == 0 and petals[i].pressure > 0:
-               self._petal_states[i] = 1
-               self._petal_pressed[i] = True
-            elif (self._petal_states[i] == 1 or self._petal_states[i] == 2) and petals[i].pressure > 0:
-               self._petal_states[i] = 2
-               self._petal_pressed[i] = False
-            elif (self._petal_states[i] == 1 or self._petal_states[i] == 2) and petals[i].pressure == 0:
-               self._petal_states[i] = 3
-               self._petal_pressed[i] = False
-            elif self._petal_states[i] == 3 and petals[i].pressure == 0:
-               self._petal_states[i] = 0
-               self._petal_pressed[i] = False
-
-    def draw(self, ctx: Context) -> None:
-        # Paint the background black
-        ctx.rgb(0, 0, 0).rectangle(-120, -120, 240, 240).fill()
-        # Rotate the image around z axis
-        if self._rotate: #or self._angle < 6.28:
-            ctx.save()
-            ctx.rotate(self._angle)
-        # Simulate rotation around y axis (it's a 2D graphics context)
-        if self._spin:
-            ctx.save()
-            ctx.scale(abs(math.cos(self._angle)) , 1)
-
-        # Needed for correct origin for above translations.
-        ctx.translate(-120,-120)
-
-        # Load picture, fall back on profile picture
-        try:
-            path=self.PROFILES_DIR + '/' + self.get_profiles()[self._selected_profile]
-            uos.stat(path)
-
-            ctx.image(path, 0, 0, 241, 241)
-        except OSError:
-            ctx.image(f"/flash/profile.png", 0, 0, 241, 241)
-        if self._rotate or self._spin:
-            ctx.restore()
-        # colorful petals
-        if self._pulse:
-            leds.set_brightness(self.pulse(leds.get_brightness()))
-        flag = self._flags[self._selected_flag]
-
-        if flag != None:
-            if self._rotate:
-                for i in range(40):
-                    leds.set_rgb(math.trunc(self._offset + i) % 40, *flag[i])
-                self._offset += 0.335
-            else:
-                for i in range(40):
-                    leds.set_rgb(i, *flag[i])
-        # Effects:
-        if self._ironman:
-            for i in range(40):
-                leds.set_rgb(i,170,255,255)
-        if self._cthulhu:
-            for i in range(40):
-                leds.set_rgb(i,0,255,0)
+    def update_leds(self):
+        colors = COLORS[self.flag_id]
+        for i in range(NR_LEDS):  # set flag
+            i_led = int(i + self.rot * NR_LEDS) % NR_LEDS
+            i_color = int(i / NR_LEDS * len(colors))
+            leds.set_rgb(i_led, *colors[i_color])
         leds.update()
+        leds.set_brightness(self.brightness)  # max: 255
+        sys_display.set_backlight(int(self.brightness / 2.5))  # max: 100
+
+    def update_debounce_petals(self, petals):
+        for i in range(len(petals)):
+            if petals[i].pressure > 0 and not self.petal_last_frame[i]:
+                if i < len(self.audio_files):
+                    self.audio_files[i].signals.trigger.start()
+            self.petal_last_frame[i] = petals[i].pressure > 0  # debouncing
+
+    def update_rot(self, gyro):
+        rot = -(math.atan2(gyro[1], gyro[0]) / math.pi / 2) % 1
+        if 0.2 < (abs(self.rot - rot) % 1) < 0.8:
+            return
+        self.rot = rot
+
+    def update_buttons(self, ins):
+        if abs(ins.buttons.os) == 1:
+            self.brightness += ins.buttons.os  # left: -1, right: 1, pressed: 2
+            self.brightness = max(0, min(255, self.brightness))
+        if self.input.buttons.app.left.pressed:  # debounced by InputController
+            self.flag_id = (self.flag_id - 1) % len(COLORS)  # rotate flags
+        if self.input.buttons.app.right.pressed:
+            self.picture_id = (self.picture_id - 1) % len(self.img_files)  # rotate image
 
     def think(self, ins: InputState, delta_ms: int) -> None:
         super().think(ins, delta_ms)
-        # zeroth element being the pad closest to the USB port. Then, every other pad in a clockwise direction.
-        # Pads 0, 2, 4, 6, 8 are Top pads.
-        # Pads 1, 3, 5, 7, 9 are Bottom pads.
-        self.update_petals(self.input.captouch.petals)
-        if self._petal_pressed[0]:
-            self._rotate = not self._rotate
-            if self._rotate:
-                self._angle=0
-        elif self._rotate or self._spin:
-            self._angle= (self._angle + math.radians(0.5)) % (math.pi * 2)
-        if self._petal_pressed[1]:
-            self.toggle_pulse()
-        # Profile down
-        if self._petal_pressed[2]:
-            self._selected_profile= (self._selected_profile + 1) % len(self.get_profiles())
-        # Profile up
-        #if self._petal_pressed[3]:
-            #self._selected_profile = (self._selected_profile + 1) % len(self.get_profiles())
-        if self._petal_pressed[4]:
-            self._spin= not self._spin
-        if self._petal_pressed[3]:
-            self.sound_gruess_di.signals.trigger.start()
-        if self._petal_pressed[5]:
-            self.sound_schleich_di.signals.trigger.start()
-        if self._petal_pressed[9]:
-            self.set_ironman()
-        if self._petal_pressed[8]:
-            self.set_flag()
-        if self._petal_pressed[7]:
-            self.set_cthulhu()
-# For running with `mpremote run`:
+        self.update_rot(ins.imu.acc)
+        self.update_leds()
+        self.update_debounce_petals(ins.captouch.petals)
+        self.update_buttons(ins)
+
+    def draw(self, ctx: Context) -> None:
+        ctx.rgb(0, 0, 0).rectangle(-120, -120, 240, 240).fill()
+        if not self.img_files: return  # noqa
+        ctx.rotate(self.rot * math.pi * 2)
+        ctx.translate(-120, -120)
+        try:
+            path = self.img_files[self.picture_id]
+            ctx.image(path, 0, 0, 240, 240)
+        except: pass  # noqa
+
+
 if __name__ == "__main__":
-    import st3m.run
-
-    st3m.run.run_view(SalzamtNickApp(ApplicationContext()))
-
+    run_view(SalzApp(ApplicationContext()))
