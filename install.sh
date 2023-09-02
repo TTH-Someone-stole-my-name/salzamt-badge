@@ -1,6 +1,7 @@
 #!/bin/bash
 set -uo pipefail
-mpremote mkdir :/flash/sys/apps/salzamt-badge
+sudo mpremote mkdir :/sd/apps/salz
 set -e
-mpremote cp src/flow3r.toml :/flash/sys/apps/salzamt-badge/flow3r.toml
-mpremote cp src/__init__.py :/flash/sys/apps/salzamt-badge/__init__.py
+sudo mpremote cp src/flow3r.toml :/sd/apps/salz/flow3r.toml
+sudo mpremote cp src/__init__.py :/sd/apps/salz/__init__.py
+sudo mpremote cp src/constants.py :/sd/apps/salz/constants.py
